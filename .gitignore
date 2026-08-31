@@ -1,0 +1,13 @@
+# Segredos e tokens do OAuth — nunca versionar
+credentials.json
+token.json
+
+# Ambiente virtual
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
