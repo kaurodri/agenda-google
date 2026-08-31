@@ -50,6 +50,43 @@ python agenda.py delete --event-id <id>
 Use `--calendar-id` (antes do subcomando) para operar em uma agenda diferente da principal, ex:
 `python agenda.py --calendar-id outra@agenda.com list`.
 
+### Eventos recorrentes
+
+O comando `create` aceita `--recurrence` com uma ou mais regras [RRULE (RFC 5545)](https://icalendar.org/rrule-tool.html).
+O `--start`/`--end` definem a data/hora da **primeira** ocorrência — a recorrência repete a
+partir dela, então confira o dia da semana correspondente antes de criar.
+
+```bash
+# Toda segunda-feira, começando em 31/08/2026 (que é uma segunda-feira)
+python agenda.py create --summary "RG Enactus UFU" \
+  --start 2026-08-31T18:30:00 --end 2026-08-31T19:30:00 \
+  --recurrence "RRULE:FREQ=WEEKLY;BYDAY=MO"
+
+# Toda terça e quinta
+python agenda.py create --summary "Treino" \
+  --start 2026-09-01T07:00:00 --end 2026-09-01T08:00:00 \
+  --recurrence "RRULE:FREQ=WEEKLY;BYDAY=TU,TH"
+
+# Todo dia útil (segunda a sexta)
+python agenda.py create --summary "Daily" \
+  --start 2026-09-01T09:00:00 --end 2026-09-01T09:15:00 \
+  --recurrence "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"
+
+# Todo mês, na primeira segunda-feira
+python agenda.py create --summary "Reunião mensal" \
+  --start 2026-09-07T18:30:00 --end 2026-09-07T19:30:00 \
+  --recurrence "RRULE:FREQ=MONTHLY;BYDAY=1MO"
+
+# Diariamente, com data final (até 31/12/2026)
+python agenda.py create --summary "Lembrete diário" \
+  --start 2026-09-01T08:00:00 --end 2026-09-01T08:05:00 \
+  --recurrence "RRULE:FREQ=DAILY;UNTIL=20261231T235959Z"
+```
+
+`list` e `get` mostram cada ocorrência com um id no formato `<id-base>_<data>`; para editar ou
+deletar **uma única ocorrência**, use esse id completo. Para editar ou deletar **a série toda**,
+use o `<id-base>` (a parte antes do `_`).
+
 ## Estrutura
 
 - `agenda/auth.py` — autenticação OAuth 2.0 (`get_service()`).
