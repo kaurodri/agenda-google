@@ -1,0 +1,110 @@
+"""Operações de CRUD sobre eventos da Google Agenda.
+
+Todas as funções recebem um `service` já autenticado (ver `agenda.auth.get_service`)
+e podem ser importadas e usadas diretamente em outros scripts Python, além de
+serem usadas pela CLI (`agenda.py`).
+"""
+
+TIMEZONE_PADRAO = "America/Sao_Paulo"
+
+
+def _montar_evento(
+    summary,
+    start,
+    end,
+    description=None,
+    location=None,
+    attendees=None,
+    timezone=TIMEZONE_PADRAO,
+):
+    evento = {
+        "summary": summary,
+        "start": {"dateTime": start, "timeZone": timezone},
+        "end": {"dateTime": end, "timeZone": timezone},
+    }
+    if description:
+        evento["description"] = description
+    if location:
+        evento["location"] = location
+    if attendees:
+        evento["attendees"] = [{"email": email} for email in attendees]
+    return evento
+
+
+def criar_evento(
+    service,
+    summary,
+    start,
+    end,
+    description=None,
+    location=None,
+    attendees=None,
+    calendar_id="primary",
+    timezone=TIMEZONE_PADRAO,
+):
+    """Cria um evento novo. `start`/`end` em ISO 8601, ex: 2026-09-01T10:00:00."""
+    body = _montar_evento(summary, start, end, description, location, attendees, timezone)
+    return service.events().insert(calendarId=calendar_id, body=body).execute()
+
+
+def listar_eventos(service, calendar_id="primary", max_results=10, time_min=None):
+    """Lista os próximos eventos, ordenados por horário de início.
+
+    `time_min` em ISO 8601 com timezone (ex: 2026-09-01T00:00:00Z). Se omitido,
+    usa o horário atual.
+    """
+    if time_min is None:
+        import datetime
+
+        time_min = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    resultado = (
+        service.events()
+        .list(
+            calendarId=calendar_id,
+            timeMin=time_min,
+            maxResults=max_results,
+            singleEvents=True,
+            orderBy="startTime",
+        )
+        .execute()
+    )
+    return resultado.get("items", [])
+
+
+def obter_evento(service, event_id, calendar_id="primary"):
+    """Busca um evento específico pelo id."""
+    return service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+
+
+def atualizar_evento(service, event_id, calendar_id="primary", **campos):
+    """Atualiza parcialmente um evento (patch) — só altera os campos informados.
+
+    Campos aceitos: summary, description, location, start, end, timezone, attendees.
+    """
+    body = {}
+    if "summary" in campos and campos["summary"] is not None:
+        body["summary"] = campos["summary"]
+    if "description" in campos and campos["description"] is not None:
+        body["description"] = campos["description"]
+    if "location" in campos and campos["location"] is not None:
+        body["location"] = campos["location"]
+
+    timezone = campos.get("timezone") or TIMEZONE_PADRAO
+    if campos.get("start"):
+        body["start"] = {"dateTime": campos["start"], "timeZone": timezone}
+    if campos.get("end"):
+        body["end"] = {"dateTime": campos["end"], "timeZone": timezone}
+    if campos.get("attendees"):
+        body["attendees"] = [{"email": email} for email in campos["attendees"]]
+
+    return (
+        service.events()
+        .patch(calendarId=calendar_id, eventId=event_id, body=body)
+        .execute()
+    )
+
+
+def deletar_evento(service, event_id, calendar_id="primary"):
+    """Deleta um evento pelo id."""
+    service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
