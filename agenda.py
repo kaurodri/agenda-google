@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+"""CLI para automatizar a Google Agenda: criar, listar, consultar, editar e deletar eventos.
+
+Exemplos:
+    python agenda.py create --summary "Reunião" --start 2026-09-01T10:00:00 --end 2026-09-01T11:00:00
+    python agenda.py list --max-results 5
+    python agenda.py get --event-id <id>
+    python agenda.py update --event-id <id> --summary "Novo título"
+    python agenda.py delete --event-id <id>
+"""
+
+import argparse
+import sys
+
+from googleapiclient.errors import HttpError
+
+from agenda.auth import get_service
+from agenda.eventos import (
+    atualizar_evento,
+    criar_evento,
+    deletar_evento,
+    listar_eventos,
+    obter_evento,
+)
+
+
+def _formatar_evento(evento):
+    inicio = evento.get("start", {}).get("dateTime", evento.get("start", {}).get("date", "?"))
+    return f"{evento['id']}  {inicio}  {evento.get('summary', '(sem título)')}"
+
+
+def cmd_create(service, args):
+    evento = criar_evento(
+        service,
+        summary=args.summary,
+        start=args.start,
+        end=args.end,
+        description=args.description,
+        location=args.location,
+        attendees=args.attendees,
+        calendar_id=args.calendar_id,
+    )
+    print(f"Evento criado: {_formatar_evento(evento)}")
+    print(f"Link: {evento.get('htmlLink')}")
+
+
+def cmd_list(service, args):
+    eventos = listar_eventos(
+        service,
+        calendar_id=args.calendar_id,
+        max_results=args.max_results,
+        time_min=args.time_min,
+    )
+    if not eventos:
+        print("Nenhum evento encontrado.")
+        return
+    for evento in eventos:
+        print(_formatar_evento(evento))
+
+
+def cmd_get(service, args):
+    evento = obter_evento(service, args.event_id, calendar_id=args.calendar_id)
+    print(_formatar_evento(evento))
+    if evento.get("description"):
+        print(f"Descrição: {evento['description']}")
+    if evento.get("location"):
+        print(f"Local: {evento['location']}")
+
+
+def cmd_update(service, args):
+    evento = atualizar_evento(
+        service,
+        args.event_id,
+        calendar_id=args.calendar_id,
+        summary=args.summary,
+        description=args.description,
+        location=args.location,
+        start=args.start,
+        end=args.end,
+        attendees=args.attendees,
+    )
+    print(f"Evento atualizado: {_formatar_evento(evento)}")
+
+
+def cmd_delete(service, args):
+    deletar_evento(service, args.event_id, calendar_id=args.calendar_id)
+    print(f"Evento {args.event_id} deletado.")
+
+
+def montar_parser():
+    parser = argparse.ArgumentParser(description="Automação da Google Agenda via CLI.")
+    parser.add_argument(
+        "--calendar-id", default="primary", help="ID da agenda (padrão: 'primary')."
+    )
+    subparsers = parser.add_subparsers(dest="comando", required=True)
+
+    p_create = subparsers.add_parser("create", help="Cria um novo evento.")
+    p_create.add_argument("--summary", required=True, help="Título do evento.")
+    p_create.add_argument("--start", required=True, help="Início em ISO 8601, ex: 2026-09-01T10:00:00")
+    p_create.add_argument("--end", required=True, help="Fim em ISO 8601, ex: 2026-09-01T11:00:00")
+    p_create.add_argument("--description", help="Descrição do evento.")
+    p_create.add_argument("--location", help="Local do evento.")
+    p_create.add_argument("--attendees", nargs="*", help="Lista de e-mails dos convidados.")
+    p_create.set_defaults(func=cmd_create)
+
+    p_list = subparsers.add_parser("list", help="Lista os próximos eventos.")
+    p_list.add_argument("--max-results", type=int, default=10, help="Número máximo de eventos.")
+    p_list.add_argument("--time-min", help="Data/hora mínima em ISO 8601 (padrão: agora).")
+    p_list.set_defaults(func=cmd_list)
+
+    p_get = subparsers.add_parser("get", help="Consulta um evento pelo id.")
+    p_get.add_argument("--event-id", required=True, help="ID do evento.")
+    p_get.set_defaults(func=cmd_get)
+
+    p_update = subparsers.add_parser("update", help="Atualiza campos de um evento.")
+    p_update.add_argument("--event-id", required=True, help="ID do evento.")
+    p_update.add_argument("--summary", help="Novo título.")
+    p_update.add_argument("--start", help="Novo início em ISO 8601.")
+    p_update.add_argument("--end", help="Novo fim em ISO 8601.")
+    p_update.add_argument("--description", help="Nova descrição.")
+    p_update.add_argument("--location", help="Novo local.")
+    p_update.add_argument("--attendees", nargs="*", help="Nova lista de e-mails dos convidados.")
+    p_update.set_defaults(func=cmd_update)
+
+    p_delete = subparsers.add_parser("delete", help="Deleta um evento pelo id.")
+    p_delete.add_argument("--event-id", required=True, help="ID do evento.")
+    p_delete.set_defaults(func=cmd_delete)
+
+    return parser
+
+
+def main():
+    parser = montar_parser()
+    args = parser.parse_args()
+
+    try:
+        service = get_service()
+        args.func(service, args)
+    except FileNotFoundError as e:
+        print(f"Erro de configuração: {e}", file=sys.stderr)
+        sys.exit(1)
+    except HttpError as e:
+        print(f"Erro na chamada à Google Calendar API: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
