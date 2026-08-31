@@ -39,6 +39,7 @@ def cmd_create(service, args):
         location=args.location,
         attendees=args.attendees,
         calendar_id=args.calendar_id,
+        recurrence=args.recurrence,
     )
     print(f"Evento criado: {_formatar_evento(evento)}")
     print(f"Link: {evento.get('htmlLink')}")
@@ -101,6 +102,7 @@ def montar_parser():
     p_create.add_argument("--description", help="Descrição do evento.")
     p_create.add_argument("--location", help="Local do evento.")
     p_create.add_argument("--attendees", nargs="*", help="Lista de e-mails dos convidados.")
+    p_create.add_argument("--recurrence", nargs="*", help="Lista de RRULE (ex: RRULE:FREQ=WEEKLY;BYDAY=MO)")
     p_create.set_defaults(func=cmd_create)
 
     p_list = subparsers.add_parser("list", help="Lista os próximos eventos.")

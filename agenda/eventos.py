@@ -16,6 +16,7 @@ def _montar_evento(
     location=None,
     attendees=None,
     timezone=TIMEZONE_PADRAO,
+    recurrence=None,
 ):
     evento = {
         "summary": summary,
@@ -28,6 +29,8 @@ def _montar_evento(
         evento["location"] = location
     if attendees:
         evento["attendees"] = [{"email": email} for email in attendees]
+    if recurrence:
+        evento["recurrence"] = recurrence
     return evento
 
 
@@ -41,9 +44,15 @@ def criar_evento(
     attendees=None,
     calendar_id="primary",
     timezone=TIMEZONE_PADRAO,
+    recurrence=None,
 ):
-    """Cria um evento novo. `start`/`end` em ISO 8601, ex: 2026-09-01T10:00:00."""
-    body = _montar_evento(summary, start, end, description, location, attendees, timezone)
+    """Cria um evento novo. `start`/`end` em ISO 8601, ex: 2026-09-01T10:00:00.
+
+    `recurrence` é uma lista de strings RRULE, ex: ["RRULE:FREQ=WEEKLY;BYDAY=MO"]
+    """
+    body = _montar_evento(
+        summary, start, end, description, location, attendees, timezone, recurrence
+    )
     return service.events().insert(calendarId=calendar_id, body=body).execute()
 
 
