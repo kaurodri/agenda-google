@@ -1,6 +1,8 @@
 # Segredos e tokens do OAuth — nunca versionar
 credentials.json
 token.json
+accounts/*/credentials.json
+accounts/*/token.json
 
 # Ambiente virtual
 .venv/

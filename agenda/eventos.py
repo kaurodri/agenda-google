@@ -7,6 +7,23 @@ serem usadas pela CLI (`agenda.py`).
 
 TIMEZONE_PADRAO = "America/Sao_Paulo"
 
+# Campos que fazem sentido replicar ao copiar um evento para outra conta/agenda. Propositalmente
+# fora daqui: id, etag, iCalUID, htmlLink, created, updated, organizer, creator, sequence, status,
+# kind (pertencem ao evento original/à conta de origem) e attendees (para não reenviar convites a
+# quem já foi convidado no evento original).
+CAMPOS_COPIAVEIS = [
+    "summary",
+    "description",
+    "location",
+    "start",
+    "end",
+    "recurrence",
+    "reminders",
+    "colorId",
+    "transparency",
+    "visibility",
+]
+
 
 def _montar_evento(
     summary,
@@ -127,3 +144,33 @@ def mover_evento(service, event_id, destino_calendar_id, calendar_id="primary"):
         .move(calendarId=calendar_id, eventId=event_id, destination=destino_calendar_id)
         .execute()
     )
+
+
+def copiar_evento(
+    origem_service,
+    destino_service,
+    event_id,
+    origem_calendar_id="primary",
+    destino_calendar_id="primary",
+):
+    """Copia um evento de uma agenda para outra em **contas Google diferentes**.
+
+    Diferente de `mover_evento` (que usa `events().move()` e só funciona dentro da mesma conta),
+    aqui lemos o evento na origem e criamos um evento equivalente na conta de destino — por isso
+    recebe dois `service` diferentes, um autenticado em cada conta (ver `agenda.auth.get_service`).
+
+    Só os campos em `CAMPOS_COPIAVEIS` são replicados — não copia convidados (attendees), para
+    não reenviar convites a quem já foi convidado no evento original. `start`/`end` são copiados
+    como vieram da API (incluindo `timeZone`), preservando o horário correto na conta de destino.
+
+    Limitação conhecida: se o evento original for uma série recorrente com exceções (ex: uma
+    ocorrência específica cancelada ou remarcada), a série copiada nasce "limpa", sem essas
+    exceções — só a RRULE base é copiada.
+    """
+    evento = (
+        origem_service.events()
+        .get(calendarId=origem_calendar_id, eventId=event_id)
+        .execute()
+    )
+    body = {campo: evento[campo] for campo in CAMPOS_COPIAVEIS if campo in evento}
+    return destino_service.events().insert(calendarId=destino_calendar_id, body=body).execute()
