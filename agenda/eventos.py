@@ -117,3 +117,13 @@ def atualizar_evento(service, event_id, calendar_id="primary", **campos):
 def deletar_evento(service, event_id, calendar_id="primary"):
     """Deleta um evento pelo id."""
     service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
+
+
+def mover_evento(service, event_id, destino_calendar_id, calendar_id="primary"):
+    """Move um evento (ou uma série recorrente inteira, se `event_id` for o id-base) de uma
+    agenda para outra, ambas do mesmo usuário. Usa `events().move()`."""
+    return (
+        service.events()
+        .move(calendarId=calendar_id, eventId=event_id, destination=destino_calendar_id)
+        .execute()
+    )

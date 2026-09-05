@@ -87,9 +87,48 @@ python agenda.py create --summary "Lembrete diário" \
 deletar **uma única ocorrência**, use esse id completo. Para editar ou deletar **a série toda**,
 use o `<id-base>` (a parte antes do `_`).
 
+## Gerenciar agendas (calendários)
+
+Além de eventos, o CLI também cria, lista, consulta, edita e deleta **agendas** (calendários
+secundários no Google Calendar — ex: uma agenda separada para "Faculdade" ou "Trabalho"), com o
+subcomando `calendar`:
+
+```bash
+# Criar uma agenda nova
+python agenda.py calendar create --summary "Faculdade" --description "Aulas e provas"
+
+# Listar todas as agendas visíveis (inclui a "primary" e as secundárias)
+python agenda.py calendar list
+
+# Consultar uma agenda pelo id
+python agenda.py calendar get --calendar-id <id>
+
+# Atualizar campos de uma agenda (só altera o que for informado)
+python agenda.py calendar update --calendar-id <id> --summary "Faculdade 2026"
+
+# Deletar uma agenda
+python agenda.py calendar delete --calendar-id <id>
+```
+
+Depois de criar uma agenda, use o `id` retornado com `--calendar-id <id>` (antes do subcomando)
+nos comandos de evento normais para criar/listar/editar eventos nela:
+
+```bash
+python agenda.py --calendar-id <id> create --summary "Prova" --start ... --end ...
+```
+
+**Limitações importantes**: só é possível editar ou deletar agendas que você mesmo criou — não a
+agenda `primary` (bloqueada explicitamente pelo CLI) nem agendas de terceiros que você apenas
+segue. `calendar update` usa uma atualização parcial (`patch`), que consome mais unidades de cota
+por chamada do que uma atualização completa — aceitável para uso individual, mas se um dia isso
+virar automação em lote de muitas agendas, prefira buscar a agenda inteira (`get`) e reenviar todos
+os campos de uma vez.
+
 ## Estrutura
 
 - `agenda/auth.py` — autenticação OAuth 2.0 (`get_service()`).
 - `agenda/eventos.py` — funções de CRUD reutilizáveis (`criar_evento`, `listar_eventos`,
   `obter_evento`, `atualizar_evento`, `deletar_evento`), podem ser importadas em outros scripts.
+- `agenda/calendarios.py` — funções de CRUD de agendas (`criar_calendario`, `listar_calendarios`,
+  `obter_calendario`, `atualizar_calendario`, `deletar_calendario`).
 - `agenda.py` — CLI (argparse) que expõe essas funções por linha de comando.
