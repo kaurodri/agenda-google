@@ -7,6 +7,12 @@ Exemplos:
     python agenda.py get --event-id <id>
     python agenda.py update --event-id <id> --summary "Novo título"
     python agenda.py delete --event-id <id>
+
+    python agenda.py calendar create --summary "Faculdade" --description "Aulas e provas"
+    python agenda.py calendar list
+    python agenda.py calendar get --calendar-id <id>
+    python agenda.py calendar update --calendar-id <id> --summary "Faculdade 2026"
+    python agenda.py calendar delete --calendar-id <id>
 """
 
 import argparse
@@ -15,11 +21,20 @@ import sys
 from googleapiclient.errors import HttpError
 
 from agenda.auth import get_service
+from agenda.calendarios import (
+    atualizar_calendario,
+    criar_calendario,
+    definir_cor_calendario,
+    deletar_calendario,
+    listar_calendarios,
+    obter_calendario,
+)
 from agenda.eventos import (
     atualizar_evento,
     criar_evento,
     deletar_evento,
     listar_eventos,
+    mover_evento,
     obter_evento,
 )
 
@@ -88,6 +103,62 @@ def cmd_delete(service, args):
     print(f"Evento {args.event_id} deletado.")
 
 
+def cmd_move(service, args):
+    evento = mover_evento(
+        service, args.event_id, args.destination, calendar_id=args.calendar_id
+    )
+    print(f"Evento movido: {_formatar_evento(evento)}")
+
+
+def _formatar_calendario(calendario, primaria=None):
+    marca = " (primária)" if primaria else ""
+    return f"{calendario['id']}  {calendario.get('summary', '(sem título)')}{marca}"
+
+
+def cmd_calendar_create(service, args):
+    calendario = criar_calendario(
+        service, summary=args.summary, description=args.description
+    )
+    if args.color_id:
+        definir_cor_calendario(service, calendario["id"], args.color_id)
+    print(f"Agenda criada: {_formatar_calendario(calendario)}")
+
+
+def cmd_calendar_list(service, args):
+    calendarios = listar_calendarios(service)
+    if not calendarios:
+        print("Nenhuma agenda encontrada.")
+        return
+    for calendario in calendarios:
+        print(_formatar_calendario(calendario, primaria=calendario.get("primary")))
+
+
+def cmd_calendar_get(service, args):
+    calendario = obter_calendario(service, args.calendar_id)
+    print(_formatar_calendario(calendario))
+    if calendario.get("description"):
+        print(f"Descrição: {calendario['description']}")
+    print(f"Timezone: {calendario.get('timeZone')}")
+
+
+def cmd_calendar_update(service, args):
+    calendario = atualizar_calendario(
+        service,
+        args.calendar_id,
+        summary=args.summary,
+        description=args.description,
+        timezone=args.timezone,
+    )
+    if args.color_id:
+        definir_cor_calendario(service, args.calendar_id, args.color_id)
+    print(f"Agenda atualizada: {_formatar_calendario(calendario)}")
+
+
+def cmd_calendar_delete(service, args):
+    deletar_calendario(service, args.calendar_id)
+    print(f"Agenda {args.calendar_id} deletada.")
+
+
 def montar_parser():
     parser = argparse.ArgumentParser(description="Automação da Google Agenda via CLI.")
     parser.add_argument(
@@ -128,6 +199,47 @@ def montar_parser():
     p_delete.add_argument("--event-id", required=True, help="ID do evento.")
     p_delete.set_defaults(func=cmd_delete)
 
+    p_move = subparsers.add_parser(
+        "move", help="Move um evento (ou série recorrente) para outra agenda."
+    )
+    p_move.add_argument("--event-id", required=True, help="ID do evento (use o id-base para mover a série toda).")
+    p_move.add_argument("--destination", required=True, help="ID da agenda de destino.")
+    p_move.set_defaults(func=cmd_move)
+
+    p_calendar = subparsers.add_parser("calendar", help="Gerencia agendas (calendários).")
+    calendar_subparsers = p_calendar.add_subparsers(dest="calendar_comando", required=True)
+
+    pc_create = calendar_subparsers.add_parser("create", help="Cria uma nova agenda.")
+    pc_create.add_argument("--summary", required=True, help="Nome da agenda.")
+    pc_create.add_argument("--description", help="Descrição da agenda.")
+    pc_create.add_argument(
+        "--color-id", help="ID da cor na paleta do Google Calendar (1-24, ex: 17 = lavanda)."
+    )
+    pc_create.set_defaults(func=cmd_calendar_create)
+
+    pc_list = calendar_subparsers.add_parser("list", help="Lista todas as agendas visíveis.")
+    pc_list.set_defaults(func=cmd_calendar_list)
+
+    pc_get = calendar_subparsers.add_parser("get", help="Consulta uma agenda pelo id.")
+    pc_get.add_argument("--calendar-id", required=True, help="ID da agenda.")
+    pc_get.set_defaults(func=cmd_calendar_get)
+
+    pc_update = calendar_subparsers.add_parser("update", help="Atualiza campos de uma agenda.")
+    pc_update.add_argument("--calendar-id", required=True, help="ID da agenda.")
+    pc_update.add_argument("--summary", help="Novo nome.")
+    pc_update.add_argument("--description", help="Nova descrição.")
+    pc_update.add_argument("--timezone", help="Novo timezone (ex: America/Sao_Paulo).")
+    pc_update.add_argument(
+        "--color-id", help="ID da cor na paleta do Google Calendar (1-24, ex: 17 = lavanda)."
+    )
+    pc_update.set_defaults(func=cmd_calendar_update)
+
+    pc_delete = calendar_subparsers.add_parser(
+        "delete", help="Deleta uma agenda (não é possível deletar a 'primary')."
+    )
+    pc_delete.add_argument("--calendar-id", required=True, help="ID da agenda.")
+    pc_delete.set_defaults(func=cmd_calendar_delete)
+
     return parser
 
 
@@ -143,6 +255,9 @@ def main():
         sys.exit(1)
     except HttpError as e:
         print(f"Erro na chamada à Google Calendar API: {e}", file=sys.stderr)
+        sys.exit(1)
+    except ValueError as e:
+        print(f"Erro: {e}", file=sys.stderr)
         sys.exit(1)
 
 
