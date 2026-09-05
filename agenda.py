@@ -13,14 +13,23 @@ Exemplos:
     python agenda.py calendar get --calendar-id <id>
     python agenda.py calendar update --calendar-id <id> --summary "Faculdade 2026"
     python agenda.py calendar delete --calendar-id <id>
+
+    # Múltiplas contas Google (--account identifica a conta pelo e-mail; sem --account usa a
+    # conta "default" configurada na raiz do projeto):
+    python agenda.py --account trabalho@gmail.com list
+    python agenda.py accounts
+    python agenda.py copy-event --event-id <id> \\
+        --from-account default --from-calendar-id primary \\
+        --to-account trabalho@gmail.com --to-calendar-id primary
 """
 
 import argparse
+import os
 import sys
 
 from googleapiclient.errors import HttpError
 
-from agenda.auth import get_service
+from agenda.auth import ACCOUNTS_DIR, CREDENTIALS_PATH, get_service
 from agenda.calendarios import (
     atualizar_calendario,
     criar_calendario,
@@ -31,6 +40,7 @@ from agenda.calendarios import (
 )
 from agenda.eventos import (
     atualizar_evento,
+    copiar_evento,
     criar_evento,
     deletar_evento,
     listar_eventos,
@@ -110,6 +120,40 @@ def cmd_move(service, args):
     print(f"Evento movido: {_formatar_evento(evento)}")
 
 
+def cmd_copy_event(args):
+    origem_service = get_service(args.from_account)
+    destino_service = get_service(args.to_account)
+    evento = copiar_evento(
+        origem_service,
+        destino_service,
+        args.event_id,
+        origem_calendar_id=args.from_calendar_id,
+        destino_calendar_id=args.to_calendar_id,
+    )
+    print(f"Evento copiado: {_formatar_evento(evento)}")
+    print(f"Link: {evento.get('htmlLink')}")
+
+
+def cmd_accounts(args):
+    print(f"default  ({'configurada' if os.path.exists(CREDENTIALS_PATH) else 'sem credentials.json'})")
+    if os.path.isdir(ACCOUNTS_DIR):
+        for nome in sorted(os.listdir(ACCOUNTS_DIR)):
+            pasta = os.path.join(ACCOUNTS_DIR, nome)
+            credenciais = os.path.join(pasta, "credentials.json")
+            token = os.path.join(pasta, "token.json")
+            if not os.path.isfile(credenciais):
+                continue
+            if not os.path.isfile(token):
+                print(f"{nome}  (ainda não autenticado — rode qualquer comando com --account {nome})")
+                continue
+            try:
+                service = get_service(nome)
+                primaria = service.calendarList().get(calendarId="primary").execute()
+                print(f"{nome}  (autenticado como {primaria.get('id')})")
+            except HttpError as e:
+                print(f"{nome}  (erro ao autenticar: {e})")
+
+
 def _formatar_calendario(calendario, primaria=None):
     marca = " (primária)" if primaria else ""
     return f"{calendario['id']}  {calendario.get('summary', '(sem título)')}{marca}"
@@ -163,6 +207,11 @@ def montar_parser():
     parser = argparse.ArgumentParser(description="Automação da Google Agenda via CLI.")
     parser.add_argument(
         "--calendar-id", default="primary", help="ID da agenda (padrão: 'primary')."
+    )
+    parser.add_argument(
+        "--account",
+        default=None,
+        help="Conta Google a usar, identificada pelo e-mail (padrão: conta 'default' na raiz).",
     )
     subparsers = parser.add_subparsers(dest="comando", required=True)
 
@@ -240,6 +289,27 @@ def montar_parser():
     pc_delete.add_argument("--calendar-id", required=True, help="ID da agenda.")
     pc_delete.set_defaults(func=cmd_calendar_delete)
 
+    p_copy_event = subparsers.add_parser(
+        "copy-event", help="Copia um evento de uma conta/agenda para outra (não copia convidados)."
+    )
+    p_copy_event.add_argument("--event-id", required=True, help="ID do evento na conta de origem.")
+    p_copy_event.add_argument(
+        "--from-account", default=None, help="Conta de origem (e-mail; padrão: 'default')."
+    )
+    p_copy_event.add_argument(
+        "--from-calendar-id", default="primary", help="Agenda de origem (padrão: 'primary')."
+    )
+    p_copy_event.add_argument(
+        "--to-account", required=True, help="Conta de destino (e-mail)."
+    )
+    p_copy_event.add_argument(
+        "--to-calendar-id", default="primary", help="Agenda de destino (padrão: 'primary')."
+    )
+    p_copy_event.set_defaults(func=cmd_copy_event, sem_service=True)
+
+    p_accounts = subparsers.add_parser("accounts", help="Lista as contas Google configuradas.")
+    p_accounts.set_defaults(func=cmd_accounts, sem_service=True)
+
     return parser
 
 
@@ -248,8 +318,11 @@ def main():
     args = parser.parse_args()
 
     try:
-        service = get_service()
-        args.func(service, args)
+        if getattr(args, "sem_service", False):
+            args.func(args)
+        else:
+            service = get_service(args.account)
+            args.func(service, args)
     except FileNotFoundError as e:
         print(f"Erro de configuração: {e}", file=sys.stderr)
         sys.exit(1)
